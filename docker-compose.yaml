@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: recipes
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d recipes"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api1:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/recipes
+      INSTANCE: api-1
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api2:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/recipes
+      INSTANCE: api-2
+    depends_on:
+      db:
+        condition: service_healthy
+
+  lb:
+    image: haproxy:2.9
+    ports:
+      - "8080:80"      # API balanceada
+      - "8404:8404"    # stats web
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      - api1
+      - api2
+
+volumes:
+  dbdata:
