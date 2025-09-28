@@ -1,14 +1,12 @@
-# ADA2_UT3TFU
 # Recetas – Demo (FastAPI + HAProxy + Postgres + Nginx)
 
-Mini API de **libro de recetas** con front estático, **2 instancias** de API balanceadas por **HAProxy** y **PostgreSQL** como base de datos. Pensado para demostrar **contenedores**, **escalado horizontal (stateless)**, **balanceo**, **BASE** y **scripts de prueba**.
+Mini API de **libro de recetas** con front estático, **2 instancias** de API balanceadas por **HAProxy** y **PostgreSQL** como base de datos. Pensado para demostrar **contenedores**, **escalado horizontal (stateless)**, **balanceo**, y **scripts de prueba**.
 
 ---
 
 ## 1. Requisitos
 
 * Docker 24+ y Docker Compose v2
-* (Opcional) `jq` para formatear JSON en scripts
 
 ---
 
@@ -21,6 +19,10 @@ recetas-app/
 ├─ haproxy/haproxy.cfg     # frontend :80 → api1/api2 ; stats :8404
 ├─ web/index.html          # front estático (Nginx)
 ├─ scripts/*.sh            # scripts de demo (curl)
+│   ├─ demo_products.sh
+│   ├─ demo_recipes.sh
+│   ├─ demo_shopping.sh
+│   └─ demo_all.sh         # ejecuta todo el flujo (productos→recetas→listas)
 ├─ Dockerfile              # imagen de la API
 ├─ docker-compose.yaml     # db + api(1,2) + lb + web
 ├─ requirements.txt        # dependencias Python
@@ -79,9 +81,13 @@ bash scripts/demo_products.sh
 
 # Crear receta y agregar ingredientes
 bash scripts/demo_recipes.sh
-```
 
-> Si no tenés `jq`, los scripts imprimen JSON plano.
+# Crear varias recetas y una lista de compras
+bash scripts/demo_shopping.sh
+
+# Demo completa (productos → recetas → listas)
+bash scripts/demo_all.sh
+```
 
 ---
 
@@ -122,28 +128,14 @@ ENV=dev
 ## 10. Troubleshooting
 
 * **`COPY requirements.txt` no encontrado**: revisá que `requirements.txt` esté en el *context* del `Dockerfile` y que `.dockerignore` no lo excluya.
-* **`jq: command not found`**: instalá `jq` o usá scripts sin `jq`.
 * **CORS**: si front y API corren en puertos distintos, configurar `CORSMiddleware` en `app/main.py`.
 * **DB no lista**: Compose ya define `depends_on: service_healthy`. Esperá a que la healthcheck pase.
+* **ON CONFLICT error en shopping_list_items**: asegurate de que la tabla tenga `PRIMARY KEY (list_id, product_id)`.
+* **500 en `/shopping-lists/{id}`**: verificar que `qty` se devuelva casteado a `float` en `repo.get_list`.
 
 ---
 
-## 11. Cómo validar la consistencia
-
-* Crear producto y actualizar su `unit` (ON CONFLICT en `repo`).
-* Crear receta y agregar items concurrentemente; Postgres asegura atomicidad y aislamiento.
-
----
-
-## 12. Entregables sugeridos
-
-* Código del back (`app/`), front (`web/`), `docker-compose.yaml`, `Dockerfile`, `haproxy.cfg`, `init.sql`.
-* Scripts de prueba (`scripts/*.sh`).
-* Capturas: front funcionando, `/health` alternando instancias, HAProxy Stats.
-
----
-
-## 13. Comandos útiles
+## Comandos útiles
 
 ```bash
 # logs
@@ -152,12 +144,9 @@ docker compose logs -f lb api1 api2 db web
 # rebuild sin cache
 docker compose build --no-cache
 
+# rebuild solo un servicio
+docker compose up -d --no-deps --build api1
+
 # parar y limpiar
 docker compose down -v
 ```
-
----
-
-## 14. Licencia
-
-MIT (o la que prefieras)
