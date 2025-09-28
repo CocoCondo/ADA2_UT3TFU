@@ -42,5 +42,15 @@ services:
       - api1
       - api2
 
+  web:
+    image: nginx:alpine
+    ports:
+      - "8090:80"
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+    depends_on:
+      - lb
+
+
 volumes:
   dbdata:
