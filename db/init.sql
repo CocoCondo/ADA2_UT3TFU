@@ -9,7 +9,9 @@ CREATE TABLE recipe_items (
 );
 CREATE TABLE shopping_lists (id SERIAL PRIMARY KEY, name TEXT NOT NULL);
 CREATE TABLE shopping_list_items (
-  list_id INT REFERENCES shopping_lists(id) ON DELETE CASCADE,
-  product_id INT REFERENCES products(id),
-  qty NUMERIC NOT NULL
+  list_id INT NOT NULL REFERENCES shopping_lists(id) ON DELETE CASCADE,
+  product_id INT NOT NULL REFERENCES products(id),
+  qty NUMERIC NOT NULL,
+  PRIMARY KEY (list_id, product_id)     -- ✅ clave compuesta
 );
+
