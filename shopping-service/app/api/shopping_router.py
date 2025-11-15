@@ -1,5 +1,6 @@
+from typing import List
 from fastapi import APIRouter, Path
-from app.domain.models import ShoppingListCreate
+from app.domain.models import ShoppingList, ShoppingListCreate
 from app.domain import services
 
 router = APIRouter(prefix="/shopping-lists", tags=["shopping"])
@@ -17,3 +18,7 @@ def get_list(list_id: int = Path(..., gt=0)):
     if not data:
         return {"detail": "not found"}
     return data
+
+@router.get("", response_model=List[ShoppingList])
+def list_lists():
+    return services.list_shopping_lists()

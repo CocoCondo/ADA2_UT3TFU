@@ -5,6 +5,9 @@ from app.domain import services
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 
+@router.delete("", status_code=204)
+def clear_all_recipes():
+    services.clear_recipes()
 
 @router.post("", response_model=Recipe)
 def create_recipe(payload: RecipeCreate):

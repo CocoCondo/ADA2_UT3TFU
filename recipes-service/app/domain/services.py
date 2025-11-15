@@ -7,6 +7,8 @@ def create_recipe(data: RecipeCreate) -> Recipe:
     rid = repo.insert_recipe(data)
     return Recipe(id=rid, name=data.name, steps=data.steps)
 
+def clear_recipes() -> None:
+    repo.clear_all_recipes()
 
 def get_all_recipes() -> List[Recipe]:
     return repo.list_recipes()

@@ -1,6 +1,14 @@
+from typing import List
 from sqlalchemy import text
 from app.infrastructure.db import get_connection
-from app.domain.models import ShoppingListCreate
+from app.domain.models import ShoppingList, ShoppingListCreate
+
+
+def list_shopping_lists() -> List[ShoppingList]:
+    sql = text("SELECT id, name FROM shopping_lists ORDER BY id")
+    with get_connection() as conn:
+        rows = conn.execute(sql).mappings().all()
+    return [ShoppingList(**row) for row in rows]
 
 
 def create_list(data: ShoppingListCreate) -> int:

@@ -16,6 +16,14 @@ def insert_recipe(data: RecipeCreate) -> int:
         conn.commit()
     return rid
 
+def clear_all_recipes() -> None:
+    with get_connection() as conn:
+        # primero items, después recetas, o TRUNCATE en conjunto
+        conn.execute(text("""
+            TRUNCATE TABLE recipe_items, recipes
+            RESTART IDENTITY CASCADE
+        """))
+        conn.commit()
 
 def list_recipes() -> List[Recipe]:
     sql = text("SELECT id, name, steps FROM recipes ORDER BY id")
