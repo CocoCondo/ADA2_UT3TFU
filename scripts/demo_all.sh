@@ -7,19 +7,6 @@ CLEAN="${CLEAN:-false}"   # CLEAN=true para borrar antes (requiere endpoints DEL
 
 pp() { cat; }
 
-wait_ready() {
-  echo "→ Esperando API en $BASE_URL/health ..."
-  for i in {1..30}; do
-    if curl -fsS "$BASE_URL/health" >/dev/null; then
-      echo "✓ API lista"
-      return 0
-    fi
-    sleep 1
-  done
-  echo "✗ API no responde" >&2
-  exit 1
-}
-
 extract_id() {  # lee {"id":N,...} por stdin o 1er arg
   local text="${1:-}"
   [[ -z "$text" ]] && text="$(cat)"

@@ -1,56 +1,75 @@
 services:
   db:
     image: postgres:16
+    container_name: recetas-db
     environment:
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: recipes
+      POSTGRES_DB: postgres
     volumes:
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-      - dbdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d recipes"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      - db_data:/var/lib/postgresql/data
+      - ./db/init-products.sql:/docker-entrypoint-initdb.d/01-products.sql:ro
+      - ./db/init-recipes.sql:/docker-entrypoint-initdb.d/02-recipes.sql:ro
+      - ./db/init-shopping.sql:/docker-entrypoint-initdb.d/03-shopping.sql:ro
+    networks:
+      - recetas-net
 
-  api1:
-    build: .
+  products-service:
+    build: ./products-service
+    container_name: productos-svc
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/recipes
-      INSTANCE: api-1
+      DATABASE_URL: ${PRODUCTS_DATABASE_URL}
     depends_on:
-      db:
-        condition: service_healthy
+      - db
+    networks:
+      - recetas-net
 
-  api2:
-    build: .
+  recipes-service:
+    build: ./recipes-service
+    container_name: recetas-svc
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/recipes
-      INSTANCE: api-2
+      DATABASE_URL: ${RECIPES_DATABASE_URL}
     depends_on:
-      db:
-        condition: service_healthy
+      - db
+    networks:
+      - recetas-net
 
-  lb:
-    image: haproxy:2.9
+  shopping-service:
+    build: ./shopping-service
+    container_name: shopping-svc
+    environment:
+      DATABASE_URL: ${SHOPPING_DATABASE_URL}
+    depends_on:
+      - db
+    networks:
+      - recetas-net
+
+  gateway:
+    build: ./gateway
+    container_name: api-gateway
     ports:
-      - "8080:80"      # API balanceada
-      - "8404:8404"    # stats web
-    volumes:
-      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - "8080:8080"          # expone el API Gateway
     depends_on:
-      - api1
-      - api2
+      - products-service
+      - recipes-service
+      - shopping-service
+    networks:
+      - recetas-net
 
   web:
     image: nginx:alpine
+    container_name: recetas-web
     ports:
-      - "8090:80"
+      - "8090:80"            # front estático
     volumes:
-      - ./web:/usr/share/nginx/html:ro
+      - ./web/index.html:/usr/share/nginx/html/index.html:ro
     depends_on:
-      - lb
-
+      - gateway
+    networks:
+      - recetas-net
 
 volumes:
-  dbdata:
+  db_data:
+
+networks:
+  recetas-net:
