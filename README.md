@@ -1,6 +1,6 @@
 # Recetas – Demo (FastAPI + HAProxy + Postgres + Nginx)
 
-Mini API de **libro de recetas** con front estático, **2 instancias** de API balanceadas por **HAProxy** y **PostgreSQL** como base de datos. Pensado para demostrar **contenedores**, **escalado horizontal (stateless)**, **balanceo**, y **scripts de prueba**.
+Mini API de **libro de recetas** con front estático, **2 instancias** de API balanceadas por **HAProxy** y **PostgreSQL** como base de datos. Pensado para demostrar **microservicios**
 
 ---
 
@@ -13,102 +13,204 @@ Mini API de **libro de recetas** con front estático, **2 instancias** de API ba
 ## 2. Estructura
 
 ```
-recetas-app/
-├─ app/                    # backend FastAPI por dominios (products/recipes/shopping)
-├─ db/init.sql             # DDL inicial (Postgres)
-├─ haproxy/haproxy.cfg     # frontend :80 → api1/api2 ; stats :8404
-├─ web/index.html          # front estático (Nginx)
-├─ scripts/*.sh            # scripts de demo (curl)
-│   ├─ demo_products.sh
-│   ├─ demo_recipes.sh
-│   ├─ demo_shopping.sh
-│   └─ demo_all.sh         # ejecuta todo el flujo (productos→recetas→listas)
-├─ Dockerfile              # imagen de la API
-├─ docker-compose.yaml     # db + api(1,2) + lb + web
-├─ requirements.txt        # dependencias Python
-└─ .env.example            # variables (DATABASE_URL, INSTANCE, ENV)
+C:.
+│   .env
+│   .gitignore
+│   docker-compose.yaml
+│   Dockerfile
+│   README.md
+│
+├───db
+│       init-products.sql
+│       init-recipes.sql
+│       init-shopping.sql
+│
+├───gateway
+│       Dockerfile
+│       haproxy.cfg
+│
+├───products-service
+│   │   Dockerfile
+│   │   requirements.txt
+│   │
+│   └───app
+│       │   config.py
+│       │   main.py
+│       │
+│       ├───api
+│       │       products_router.py
+│       │
+│       ├───domain
+│       │       models.py
+│       │       services.py
+│       │
+│       └───infrastructure
+│               db.py
+│               mappers.py
+│               repo.py
+│
+├───recipes-service
+│   │   Dockerfile
+│   │   requirements.txt
+│   │
+│   └───app
+│       │   config.py
+│       │   main.py
+│       │
+│       ├───api
+│       │       recipes_router.py
+│       │       recipes_soap_router.py
+│       │
+│       ├───domain
+│       │       models.py
+│       │       services.py
+│       │
+│       └───infrastructure
+│               db.py
+│               repo.py
+│
+├───scripts
+│   │   demo_all.sh
+│   │   demo_health.sh
+│   │   demo_products.sh
+│   │   demo_recipes.sh
+│   │   demo_shopping.sh
+│   │   load_sample_data.sh
+│   │
+│   └───UT5
+│           00_seed.sh
+│           01_test.sh
+│           01_test_rest.sh
+│           02_clear_recipes.sh
+│           03_test_fault_isolation.sh
+│
+├───shopping-service
+│   │   Dockerfile
+│   │   requirements.txt
+│   │
+│   └───app
+│       │   config.py
+│       │   main.py
+│       │
+│       ├───api
+│       │       shopping_router.py
+│       │
+│       ├───domain
+│       │       models.py
+│       │       services.py
+│       │
+│       └───infrastructure
+│               db.py
+│               repo.py
+│
+└───web
+        index.html
 ```
 
 ---
 
 ## 3. Puertos
 
-* **8090** → Front web (Nginx)
-* **8080** → API (vía HAProxy)
-* **8404** → HAProxy Stats (usuario/clave: `admin`/`admin`)
+* **8090** → front web (Nginx)
+* **8080** → API Gateway (HAProxy)
+* **5432** → PostgreSQL
+* **8404** → HAProxy Stats (usuario/clave: admin/admin)
 
 ---
 
 ## 4. Levantar el entorno
 
 ```bash
-# 1) build + up
+# Copiar y adaptar el archivo de variables:
+
+cp .env.example .env
+
+# Construir y levantar todo:
+
 docker compose up -d --build
 
-# 2) verificar servicios
-curl http://localhost:8080/health
-# → {"ok":true,"instance":"api-1"} o "api-2"
+# Verificar que el gateway responda:
 
-# 3) abrir el front
-# http://localhost:8090
+curl http://localhost:8080/recipes/health
+
+# Abrir el front:
+
+http://localhost:8090
 ```
 
-> Si el front (8090) consulta a la API (8080), FastAPI ya trae CORS habilitado en `app/main.py`. Ajustar orígenes en producción.
+> El frontend Nginx llama al API Gateway usando http://gateway:8080 dentro de la red de Docker y http://localhost:8080 desde el host. Los servicios FastAPI tienen CORS habilitado para permitir las llamadas desde el front (ajustar orígenes en producción).
 
 ---
 
 ## 5. Endpoints principales
+### Microservicio products-service (dominio productos):
+
+* `POST /products`
+body: { "name": string, "unit": string }
+
+* `GET /products`
+lista todos los productos
+
+### Microservicio recipes-service (dominio recetas):
+#### REST:
+
+* `GET /recipes`
+lista todas las recetas
+
+* `POST /recipes`
+body: { "name": string, "steps"?: string }
+
+* `POST /recipes/{id}/items`
+body: { "product_id": int, "qty": float }
+
+* `DELETE /recipes`
+elimina todas las recetas e items (TRUNCATE + RESTART IDENTITY)
 
 * `GET /health`
-* `POST /products` `{ name, unit }`
-* `GET /products`
-* `POST /recipes` `{ name, steps? }`
-* `GET /recipes`
-* `POST /recipes/{id}/items` `{ product_id, qty }`
-* `POST /shopping-lists` `{ name, recipe_ids[] }`
+healthcheck del servicio
+
+#### SOAP/XML (expuestos desde recipes-service, montados bajo /recipes/soap):
+
+* `POST /recipes/soap/create`
+CreateRecipeRequest → CreateRecipeResponse
+
+* `POST /recipes/soap/list`
+ListRecipesRequest → ListRecipesResponse
+
+### Microservicio shopping-service (dominio listas de compras):
+
+* `POST /shopping-lists`
+body: { "name": string, "recipe_ids": [int, ...] }
+crea una lista de compras a partir de recetas
+
+* `GET /shopping-lists`
+devuelve todas las listas de compras (id, name)
+
 * `GET /shopping-lists/{id}`
-
+devuelve una lista con sus recetas asociadas
+respuesta: { "id": int, "name": string, "recipes": [recipe_id, ...] }
 ---
 
-## 6. Scripts de demo
+## 6. Arquitectura
 
-```bash
-# Alterna instancias (muestra api-1 / api-2)
-bash scripts/demo_health.sh
+Arquitectura (vista lógica)
 
-# Crear y listar productos
-bash scripts/demo_products.sh
-
-# Crear receta y agregar ingredientes
-bash scripts/demo_recipes.sh
-
-# Crear varias recetas y una lista de compras
-bash scripts/demo_shopping.sh
-
-# Demo completa (productos → recetas → listas)
-bash scripts/demo_all.sh
+Desde el punto de vista del host:
 ```
 
----
-
-## 7. HAProxy Stats
-
-* Config: `haproxy/haproxy.cfg` (sección `listen stats`)
-* Acceso: [http://localhost:8404](http://localhost:8404) (usuario `admin`, pass `admin`)
-
----
-
-## 8. Arquitectura
-
+[ web (Nginx:8090) ] → [ API Gateway (HAProxy:8080) ]
+│
+┌─────────────────┼─────────────────┐
+↓ ↓ ↓
+[ products-service:8000 ] [ recipes-service:8000 ] [ shopping-service:8000 ]
+│ │ │
+└───────────────[ PostgreSQL:5432 ]───────────────┘
 ```
-[ web (Nginx:8090) ]  →  [ HAProxy:8080 ]  →  [ api1:8000 ]
-                                         └→ [ api2:8000 ]
-                                     ↘
-                                  [ Postgres:5432 ]
-```
+Cada microservicio es stateless: el estado vive en PostgreSQL.
 
-* La API es **stateless** (se puede escalar). El estado persiste en **Postgres**.
+Los datos están particionados por dominio (DB o esquema distinto para productos, recetas y shopping).
 
+Es posible escalar horizontalmente cada servicio de forma independiente modificando docker-compose para añadir réplicas.
 ---
 
 ## 9. Variables de entorno
@@ -116,37 +218,7 @@ bash scripts/demo_all.sh
 Archivo `.env` (basado en `.env.example`):
 
 ```
-DATABASE_URL=postgresql://postgres:postgres@db:5432/recipes
-INSTANCE=api
-ENV=dev
-```
-
-> `INSTANCE` se muestra en `/health` para ver el balanceo.
-
----
-
-## 10. Troubleshooting
-
-* **`COPY requirements.txt` no encontrado**: revisá que `requirements.txt` esté en el *context* del `Dockerfile` y que `.dockerignore` no lo excluya.
-* **CORS**: si front y API corren en puertos distintos, configurar `CORSMiddleware` en `app/main.py`.
-* **DB no lista**: Compose ya define `depends_on: service_healthy`. Esperá a que la healthcheck pase.
-* **ON CONFLICT error en shopping_list_items**: asegurate de que la tabla tenga `PRIMARY KEY (list_id, product_id)`.
-* **500 en `/shopping-lists/{id}`**: verificar que `qty` se devuelva casteado a `float` en `repo.get_list`.
-
----
-
-## Comandos útiles
-
-```bash
-# logs
-docker compose logs -f lb api1 api2 db web
-
-# rebuild sin cache
-docker compose build --no-cache
-
-# rebuild solo un servicio
-docker compose up -d --no-deps --build api1
-
-# parar y limpiar
-docker compose down -v
+PRODUCTS_DATABASE_URL=postgresql://postgres:postgres@db:5432/products_db
+RECIPES_DATABASE_URL=postgresql://postgres:postgres@db:5432/recipes_db
+SHOPPING_DATABASE_URL=postgresql://postgres:postgres@db:5432/shopping_db
 ```
